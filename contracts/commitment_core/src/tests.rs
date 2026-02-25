@@ -32,8 +32,9 @@ fn test_create_commitment_i128_max() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
+        grace_period_days: 0,
     };
 
     let amount = i128::MAX;
@@ -65,8 +66,9 @@ fn test_create_commitment_amount_one() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
+        grace_period_days: 0,
     };
 
     let amount = 1i128;
@@ -220,9 +222,9 @@ fn test_create_commitment_valid() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     let _amount = 1000i128;
@@ -244,9 +246,9 @@ fn test_validate_rules_invalid_duration() {
         duration_days: 0, // Invalid duration
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     // Test invalid duration - should panic
@@ -265,9 +267,9 @@ fn test_validate_rules_invalid_max_loss() {
         duration_days: 30,
         max_loss_percent: 150, // Invalid max loss (> 100)
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     // Test invalid max loss percent - should panic
@@ -286,9 +288,9 @@ fn test_validate_rules_invalid_type() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "invalid_type"), // Invalid type
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     // Test invalid commitment type - should panic
@@ -321,9 +323,9 @@ fn test_create_commitment_duration_zero() {
         duration_days: 0, // Invalid
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     e.as_contract(&contract_id, || {
@@ -351,9 +353,9 @@ fn test_create_commitment_max_loss_over_100() {
         duration_days: 30,
         max_loss_percent: 101, // Invalid
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     e.as_contract(&contract_id, || {
@@ -416,9 +418,9 @@ fn test_create_commitment_expiration_overflow() {
         duration_days: 1,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     e.as_contract(&contract_id, || {
@@ -495,9 +497,9 @@ fn test_create_commitment_invalid_type() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "invalid"), // Invalid type
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     e.as_contract(&contract_id, || {
@@ -524,7 +526,7 @@ fn test_create_commitment_valid_rules() {
             duration_days: 30,
             max_loss_percent: 10,
             commitment_type: String::from_str(&e, "safe"),
-            early_exit_penalty: 5,
+            early_exit_penalty: 15,
             min_fee_threshold: 100,
             grace_period_days: 0,
         };
@@ -533,6 +535,145 @@ fn test_create_commitment_valid_rules() {
     // but it validates that the rules validation passes
     e.as_contract(&contract_id, || {
         CommitmentCoreContract::validate_rules(&e, &rules); // Should not panic
+    });
+}
+
+// ============================================
+// Commitment Type Constraint Tests - Issue #151
+// ============================================
+
+#[test]
+fn test_validate_rules_commitment_types_success() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+
+    // Safe Success
+    let safe_rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 10,
+        commitment_type: String::from_str(&e, "safe"),
+        early_exit_penalty: 15,
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &safe_rules);
+    });
+
+    // Balanced Success
+    let balanced_rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 30,
+        commitment_type: String::from_str(&e, "balanced"),
+        early_exit_penalty: 10,
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &balanced_rules);
+    });
+
+    // Aggressive Success
+    let aggressive_rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 100,
+        commitment_type: String::from_str(&e, "aggressive"),
+        early_exit_penalty: 5,
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &aggressive_rules);
+    });
+}
+
+#[test]
+#[should_panic(expected = "Safe type: max_loss_percent must be <= 10")]
+fn test_validate_rules_safe_invalid_loss() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+    let rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 11, // Too high for safe
+        commitment_type: String::from_str(&e, "safe"),
+        early_exit_penalty: 15,
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &rules);
+    });
+}
+
+#[test]
+#[should_panic(expected = "Safe type: early_exit_penalty must be >= 15")]
+fn test_validate_rules_safe_invalid_penalty() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+    let rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 10,
+        commitment_type: String::from_str(&e, "safe"),
+        early_exit_penalty: 14, // Too low for safe
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &rules);
+    });
+}
+
+#[test]
+#[should_panic(expected = "Balanced type: max_loss_percent must be <= 30")]
+fn test_validate_rules_balanced_invalid_loss() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+    let rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 31, // Too high for balanced
+        commitment_type: String::from_str(&e, "balanced"),
+        early_exit_penalty: 10,
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &rules);
+    });
+}
+
+#[test]
+#[should_panic(expected = "Balanced type: early_exit_penalty must be >= 10")]
+fn test_validate_rules_balanced_invalid_penalty() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+    let rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 30,
+        commitment_type: String::from_str(&e, "balanced"),
+        early_exit_penalty: 9, // Too low for balanced
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &rules);
+    });
+}
+
+#[test]
+#[should_panic(expected = "Aggressive type: early_exit_penalty must be >= 5")]
+fn test_validate_rules_aggressive_invalid_penalty() {
+    let e = Env::default();
+    let contract_id = e.register_contract(None, CommitmentCoreContract);
+    let rules = CommitmentRules {
+        duration_days: 30,
+        max_loss_percent: 100,
+        commitment_type: String::from_str(&e, "aggressive"),
+        early_exit_penalty: 4, // Too low for aggressive
+        min_fee_threshold: 100,
+        grace_period_days: 0,
+    };
+    e.as_contract(&contract_id, || {
+        CommitmentCoreContract::validate_rules(&e, &rules);
     });
 }
 
@@ -990,9 +1131,9 @@ fn test_create_commitment_event() {
         duration_days: 30,
         max_loss_percent: 10,
         commitment_type: String::from_str(&e, "safe"),
-        early_exit_penalty: 5,
+        early_exit_penalty: 15,
         min_fee_threshold: 100,
-            grace_period_days: 0,
+        grace_period_days: 0,
     };
 
     // Note: This might panic if mock token transfers are not set up, but we are testing events.

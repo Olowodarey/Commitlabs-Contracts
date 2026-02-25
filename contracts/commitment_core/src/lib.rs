@@ -73,6 +73,12 @@ pub struct CommitmentCreatedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Rules governing a commitment, including risk parameters and penalties.
+/// 
+/// ### Commitment Types Semantics:
+/// - **Safe**: Low risk. Max loss ≤ 10%, Early exit penalty ≥ 15%. Target: Stable yield pools.
+/// - **Balanced**: Medium risk. Max loss ≤ 30%, Early exit penalty ≥ 10%. Target: Mixed yield/growth pools.
+/// - **Aggressive**: High risk. Max loss ≤ 100%, Early exit penalty ≥ 5%. Target: High-yield/volatile pools.
 pub struct CommitmentRules {
     pub duration_days: u32,
     pub max_loss_percent: u32,
@@ -250,7 +256,7 @@ pub struct CommitmentCoreContract;
 
 #[contractimpl]
 impl CommitmentCoreContract {
-    /// Validate commitment rules using shared utilities
+    /// Validate commitment rules using shared utilities and type-specific constraints
     fn validate_rules(e: &Env, rules: &CommitmentRules) {
         // Duration must be > 0
         Validation::require_valid_duration(rules.duration_days);
@@ -261,6 +267,27 @@ impl CommitmentCoreContract {
         // Commitment type must be valid
         let valid_types = ["safe", "balanced", "aggressive"];
         Validation::require_valid_commitment_type(e, &rules.commitment_type, &valid_types);
+
+        // Enforce type-specific constraints
+        if rules.commitment_type == String::from_str(e, "safe") {
+            if rules.max_loss_percent > 10 {
+                panic!("Safe type: max_loss_percent must be <= 10");
+            }
+            if rules.early_exit_penalty < 15 {
+                panic!("Safe type: early_exit_penalty must be >= 15");
+            }
+        } else if rules.commitment_type == String::from_str(e, "balanced") {
+            if rules.max_loss_percent > 30 {
+                panic!("Balanced type: max_loss_percent must be <= 30");
+            }
+            if rules.early_exit_penalty < 10 {
+                panic!("Balanced type: early_exit_penalty must be >= 10");
+            }
+        } else if rules.commitment_type == String::from_str(e, "aggressive") {
+            if rules.early_exit_penalty < 5 {
+                panic!("Aggressive type: early_exit_penalty must be >= 5");
+            }
+        }
     }
 
     /// Generate unique commitment ID
