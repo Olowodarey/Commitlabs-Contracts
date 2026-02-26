@@ -88,6 +88,12 @@ pub struct CommitmentCreatedEvent {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Rules governing a commitment, including risk parameters and penalties.
+///
+/// ### Commitment Types Semantics:
+/// - **Safe**: Low risk. Max loss ≤ 10%, Early exit penalty ≥ 15%. Target: Stable yield pools.
+/// - **Balanced**: Medium risk. Max loss ≤ 30%, Early exit penalty ≥ 10%. Target: Mixed yield/growth pools.
+/// - **Aggressive**: High risk. Max loss ≤ 100%, Early exit penalty ≥ 5%. Target: High-yield/volatile pools.
 pub struct CommitmentRules {
     pub duration_days: u32,
     pub max_loss_percent: u32,
@@ -247,6 +253,7 @@ pub struct CommitmentCoreContract;
 
 #[contractimpl]
 impl CommitmentCoreContract {
+    /// Validate commitment rules using shared utilities and type-specific constraints
     pub fn pause(e: Env, caller: Address) {
         require_admin(&e, &caller);
         Pausable::pause(&e);
@@ -266,6 +273,27 @@ impl CommitmentCoreContract {
         Validation::require_valid_percent(rules.max_loss_percent);
         let valid_types = ["safe", "balanced", "aggressive"];
         Validation::require_valid_commitment_type(e, &rules.commitment_type, &valid_types);
+
+        // Enforce type-specific constraints
+        if rules.commitment_type == String::from_str(e, "safe") {
+            if rules.max_loss_percent > 10 {
+                panic!("Safe type: max_loss_percent must be <= 10");
+            }
+            if rules.early_exit_penalty < 15 {
+                panic!("Safe type: early_exit_penalty must be >= 15");
+            }
+        } else if rules.commitment_type == String::from_str(e, "balanced") {
+            if rules.max_loss_percent > 30 {
+                panic!("Balanced type: max_loss_percent must be <= 30");
+            }
+            if rules.early_exit_penalty < 10 {
+                panic!("Balanced type: early_exit_penalty must be >= 10");
+            }
+        } else if rules.commitment_type == String::from_str(e, "aggressive") {
+            if rules.early_exit_penalty < 5 {
+                panic!("Aggressive type: early_exit_penalty must be >= 5");
+            }
+        }
     }
 
     fn generate_commitment_id(e: &Env, counter: u64) -> String {
@@ -662,6 +690,21 @@ impl CommitmentCoreContract {
 
         if returned > 0 { transfer_assets(&e, &e.current_contract_address(), &commitment.owner, &commitment.asset_address, returned); }
 
+        if returned_amount > 0 {
+            token_client.transfer(&contract_address, &commitment.owner, &returned_amount);
+        }
+
+        // Call NFT contract to mark as inactive (early exited, not settled)
+        let nft_contract = e
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::NftContract)
+            .unwrap_or_else(|| {
+                set_reentrancy_guard(&e, false);
+                fail(&e, CommitmentError::NotInitialized, "early_exit")
+            });
+
+        // Call mark_inactive on NFT instead of settle (since not expired)
         let nft_contract = e.storage().instance().get::<_, Address>(&DataKey::NftContract).unwrap();
         let mut args = Vec::new(&e);
         args.push_back(e.current_contract_address().into_val(&e));
