@@ -680,11 +680,7 @@ fn test_list_commitments_by_owner_matches_get_owner_commitments() {
         CommitmentCoreContract::initialize(e.clone(), admin.clone(), nft_contract.clone());
 
         // Manually seed owner commitments to avoid full token setup.
-        let ids = vec![
-            &e,
-            String::from_str(&e, "c_1"),
-            String::from_str(&e, "c_2"),
-        ];
+        let ids = vec![&e, String::from_str(&e, "c_1"), String::from_str(&e, "c_2")];
         e.storage()
             .instance()
             .set(&DataKey::OwnerCommitments(owner.clone()), &ids);
@@ -795,7 +791,9 @@ fn test_get_total_commitments_not_initialized_returns_zero() {
     let e = Env::default();
     let contract_id = e.register_contract(None, CommitmentCoreContract);
 
-    let total = e.as_contract(&contract_id, || CommitmentCoreContract::get_total_commitments(e.clone()));
+    let total = e.as_contract(&contract_id, || {
+        CommitmentCoreContract::get_total_commitments(e.clone())
+    });
     assert_eq!(total, 0);
 }
 
@@ -804,8 +802,9 @@ fn test_get_total_value_locked_not_initialized_returns_zero() {
     let e = Env::default();
     let contract_id = e.register_contract(None, CommitmentCoreContract);
 
-    let total_value_locked = e
-        .as_contract(&contract_id, || CommitmentCoreContract::get_total_value_locked(e.clone()));
+    let total_value_locked = e.as_contract(&contract_id, || {
+        CommitmentCoreContract::get_total_value_locked(e.clone())
+    });
     assert_eq!(total_value_locked, 0);
 }
 
@@ -2132,12 +2131,13 @@ fn test_update_value_no_violation() {
     assert_eq!(updated.current_value, 950);
     assert_eq!(updated.status, String::from_str(&e, "active"));
     assert_eq!(client.get_total_value_locked(), 950);
-    
+
     // Verify ValueUpdated event was emitted
     let events = e.events().all();
     let val_upd_symbol = symbol_short!("ValUpd").into_val(&e);
     let has_val_upd = events.iter().any(|ev| {
-        ev.1.first().map_or(false, |t| t.shallow_eq(&val_upd_symbol))
+        ev.1.first()
+            .map_or(false, |t| t.shallow_eq(&val_upd_symbol))
     });
     assert!(has_val_upd, "ValueUpdated event should be emitted");
 }
@@ -2166,12 +2166,13 @@ fn test_update_value_triggers_violation() {
     let updated = client.get_commitment(&String::from_str(&e, "test_id"));
     assert_eq!(updated.current_value, 850);
     assert_eq!(updated.status, String::from_str(&e, "violated"));
-    
+
     // Verify ViolationDetected event was emitted
     let events = e.events().all();
     let violated_symbol = symbol_short!("Violated").into_val(&e);
     let has_violation = events.iter().any(|ev| {
-        ev.1.first().map_or(false, |t| t.shallow_eq(&violated_symbol))
+        ev.1.first()
+            .map_or(false, |t| t.shallow_eq(&violated_symbol))
     });
     assert!(has_violation, "ViolationDetected event should be emitted");
 }
@@ -2194,17 +2195,17 @@ fn test_check_violations_after_update_value() {
     });
 
     let client = CommitmentCoreContractClient::new(&e, &contract_id);
-    
+
     // Before update, no violations
     assert!(!client.check_violations(&String::from_str(&e, "test_id")));
-    
+
     // Manually update value to trigger violation without auto-detection
     e.as_contract(&contract_id, || {
         let mut commitment = read_commitment(&e, &String::from_str(&e, "test_id")).unwrap();
         commitment.current_value = 850; // 15% loss > 10% max
         set_commitment(&e, &commitment);
     });
-    
+
     // After manual update, check_violations should return true
     assert!(client.check_violations(&String::from_str(&e, "test_id")));
 }
@@ -2224,26 +2225,29 @@ fn test_owner_multiple_commitments_creation() {
 
     e.as_contract(&contract_id, || {
         CommitmentCoreContract::initialize(e.clone(), admin.clone(), nft_contract.clone());
-        
+
         // Create 3 commitments for the same owner
         let c1 = create_test_commitment(&e, "commit_001", &owner, 1000, 1000, 10, 30, 1000);
         let c2 = create_test_commitment(&e, "commit_002", &owner, 2000, 2000, 10, 30, 1000);
         let c3 = create_test_commitment(&e, "commit_003", &owner, 3000, 3000, 10, 30, 1000);
-        
+
         set_commitment(&e, &c1);
         set_commitment(&e, &c2);
         set_commitment(&e, &c3);
-        
+
         // Update owner commitments list
         let mut owner_commitments = Vec::new(&e);
         owner_commitments.push_back(c1.commitment_id.clone());
         owner_commitments.push_back(c2.commitment_id.clone());
         owner_commitments.push_back(c3.commitment_id.clone());
-        e.storage().instance().set(&DataKey::OwnerCommitments(owner.clone()), &owner_commitments);
+        e.storage().instance().set(
+            &DataKey::OwnerCommitments(owner.clone()),
+            &owner_commitments,
+        );
     });
 
     let client = CommitmentCoreContractClient::new(&e, &contract_id);
-    
+
     // Verify owner has 3 commitments
     let owner_commitments = client.get_owner_commitments(&owner);
     assert_eq!(owner_commitments.len(), 3);
@@ -2260,26 +2264,29 @@ fn test_owner_multiple_commitments_get_each() {
 
     e.as_contract(&contract_id, || {
         CommitmentCoreContract::initialize(e.clone(), admin.clone(), nft_contract.clone());
-        
+
         // Create 3 commitments with different amounts
         let c1 = create_test_commitment(&e, "commit_001", &owner, 1000, 1000, 10, 30, 1000);
         let c2 = create_test_commitment(&e, "commit_002", &owner, 2000, 2000, 10, 30, 1000);
         let c3 = create_test_commitment(&e, "commit_003", &owner, 3000, 3000, 10, 30, 1000);
-        
+
         set_commitment(&e, &c1);
         set_commitment(&e, &c2);
         set_commitment(&e, &c3);
-        
+
         // Update owner commitments list
         let mut owner_commitments = Vec::new(&e);
         owner_commitments.push_back(c1.commitment_id.clone());
         owner_commitments.push_back(c2.commitment_id.clone());
         owner_commitments.push_back(c3.commitment_id.clone());
-        e.storage().instance().set(&DataKey::OwnerCommitments(owner.clone()), &owner_commitments);
+        e.storage().instance().set(
+            &DataKey::OwnerCommitments(owner.clone()),
+            &owner_commitments,
+        );
     });
 
     let client = CommitmentCoreContractClient::new(&e, &contract_id);
-    
+
     // Get each commitment and verify owner and data
     let c1 = client.get_commitment(&String::from_str(&e, "commit_001"));
     assert_eq!(c1.owner, owner);
@@ -2305,23 +2312,26 @@ fn test_owner_multiple_commitments_settle_one() {
 
     e.as_contract(&contract_id, || {
         CommitmentCoreContract::initialize(e.clone(), admin.clone(), nft_contract.clone());
-        
+
         // Create 3 commitments with 1-day duration
         let mut c1 = create_test_commitment(&e, "commit_001", &owner, 1000, 1000, 10, 1, 1000);
         let mut c2 = create_test_commitment(&e, "commit_002", &owner, 2000, 2000, 10, 1, 1000);
         let mut c3 = create_test_commitment(&e, "commit_003", &owner, 3000, 3000, 10, 1, 1000);
-        
+
         set_commitment(&e, &c1);
         set_commitment(&e, &c2);
         set_commitment(&e, &c3);
-        
+
         // Update owner commitments list
         let mut owner_commitments = Vec::new(&e);
         owner_commitments.push_back(c1.commitment_id.clone());
         owner_commitments.push_back(c2.commitment_id.clone());
         owner_commitments.push_back(c3.commitment_id.clone());
-        e.storage().instance().set(&DataKey::OwnerCommitments(owner.clone()), &owner_commitments);
-        
+        e.storage().instance().set(
+            &DataKey::OwnerCommitments(owner.clone()),
+            &owner_commitments,
+        );
+
         // Manually settle one commitment (simulating what settle() would do)
         c2.status = String::from_str(&e, "settled");
         set_commitment(&e, &c2);
